@@ -1,0 +1,144 @@
+% e2match.pi 
+% A Picat program to perform matching on two extremes of a dataset.
+% The input is a comma-separated file with two columns (no header).
+% We will denote the first column A and the second column B.
+% Then the program selects two sets of rows G1+G2 (individuals/samples) so that
+% - G1 and G2 are of the same size N
+% - The column A distance between a individual I<=N in G1 and matching individual I in G2 
+%   is below a given threshold/caliper T
+% - The total column B distance between G1 and G2 is maximized
+%
+% Christian Theil Have, 2015.
+
+import cp. % (cp also works well for this problem)
+import util.
+import ordset.
+
+main([InFile,N,T,OutFile]) => 
+	RawMatrix=read_csv_file(InFile.to_atom()),
+	Matrix=real_to_integer_matrix(RawMatrix),
+	Caliper = real_to_integer(T.to_real()),
+	writeln(Caliper),
+	Pairs = reverse(sort_pairs(pairs(Matrix,Caliper))),
+	%writeln(Pairs),
+	writeln($feasible_pairs(Pairs.length())),
+	match_pairs(N.to_integer(),Pairs,G1,G2,Total),
+	solve([$max(Total)], [G1,G2]),
+	FD=open(OutFile.to_atom(),write),
+
+	write_header_line(FD),
+	foreach(I in 1..(G1.length()))
+			nth(I, G1, G1E),
+			nth(I, G2, G2E),
+			write(FD, G1E),
+			write_char(FD,','),
+			write(FD, G2E),
+			write_char(FD,','),
+			write(FD,RawMatrix[G1E,1]),
+			write_char(FD,','),
+			write(FD,RawMatrix[G2E,1]),
+			write_char(FD,','),
+			write(FD,RawMatrix[G1E,2]),
+			write_char(FD,','),
+			writeln(FD,RawMatrix[G2E,2])
+	end,
+	writeln($group1(G1)),
+	writeln($group2(G2)),
+	writeln($total_difference(Total.integer_to_real())),
+	Avg := Total.integer_to_real()/N.to_integer(),
+	writeln($mean_group_difference(Avg)).
+
+
+write_header_line(FD) =>
+			write(FD, group1),
+			write_char(FD,','),
+			write(FD, group2),
+			write_char(FD,','),
+			write(FD,group1_bmi),
+			write_char(FD,','),
+			write(FD,group2_bmi),
+			write_char(FD,','),
+			write(FD,group1_matsuda),
+			write_char(FD,','),
+			writeln(FD,group2_matsuda).
+
+
+%	match(2,1000000,Matrix,N,M),
+%	solve([Matrix,N,M]),
+
+varsna(X) = Y => if number(X) then Y=X else Y=na end.
+read_csv_file(File) = Matrix =>
+	Reader = open(File),
+	Matrix = {},
+	while (not at_end_of_stream(Reader))
+		Matrix :=  Matrix ++ { map(varsna,map(parse_term, split(readln(Reader),[',']))).to_array() } 
+	end.
+
+% Picat solvers currently do not work well with floating point numbers, so
+% so map all numbers to integer space before solving and back again afterwards.
+% A small loss of precision can occur. 
+real_to_integer_matrix(RealArr) = IntArr =>
+	IntArr = new_array(RealArr.length()),
+	foreach(I in 1..RealArr.length()) 
+		IntArr[I] := new_array(RealArr[I].length()),
+		foreach(J in 1..RealArr[I].length())
+			if number(RealArr[I,J]) then
+				IntArr[I,J] := real_to_integer(RealArr[I,J])
+			else
+				IntArr[I,J] := RealArr[I,J]
+			end
+		end
+	end.
+
+real_to_integer(R) = I => I = round(R * 10000).
+
+integer_to_real(I) = R => R = (I / 10000).to_real().
+
+sort_pairs(Pairs) = Sorted => 
+	Sorted = [ (A,B,C) : (C,A,B,C) in sort( [ (C,A,B,C) : (A,B,C) in Pairs ] ) ].
+
+pairs(Matrix,Caliper) = Pairs =>
+	Pairs = [ (A,B,C) : 
+				A in 1..Matrix.length(),
+				B in 1..Matrix.length(),
+				%A < B,
+				number(Matrix[A,1]),
+				number(Matrix[A,2]),
+				number(Matrix[B,1]),
+				number(Matrix[B,2]),
+				Matrix[A,2] >= Matrix[B,2],
+				abs(Matrix[A,1] - Matrix[B,1]) < Caliper,
+				C = abs(Matrix[A,2] - Matrix[B,2])].
+
+
+match_pairs(N,Pairs, G1, G2, Total) ?=>
+	match_pairs_rec(N,Pairs,[],G1,G2,Total).
+
+match_pairs_rec(N,_,_,G1,G2,Total), N=0 => G1=[], G2=[], Total=0. 
+
+match_pairs_rec(N,[(P1,P2,C)|Pairs],Used,G1, G2,Total), intersection(sort([P1,P2]),Used) = [] ?=>
+	G1 = [P1|P1s],
+	G2 = [P2|P2s],
+	Total #= TotalRest + C,
+	match_pairs_rec(N-1,Pairs,union(sort([P1,P2]),Used),P1s,P2s,TotalRest).
+
+match_pairs_rec(N,[(P1,P2,C)|Pairs],Used,P1s,P2s,Total), intersection(sort([P1,P2]),Used) != [] ?=>
+	match_pairs_rec(N,Pairs,Used,P1s,P2s,Total).
+
+match_pairs_old(N,Pairs, G1, G2, Total) =>
+	G1 = new_list(N),
+	G2 = new_list(N),
+	SelectedPairs = new_list(N),
+	SelectedPairs :: 1..Pairs.length(),
+	G1 :: [ A : (A,_,_) in Pairs ],
+	G2 :: [ B : (_,B,_) in Pairs ],
+	all_different(G1),
+	all_different(G2),
+	%all_different(G1 ++ G2),
+	all_different(SelectedPairs),
+	foreach(P in SelectedPairs)
+		nth(P,Pairs,(P1,P2,_)),
+		nth(N,G1,P1),
+		nth(N,G2,P2)
+	end,
+	Total #= sum([C : P in SelectedPairs, nth(P,Pairs,(_,_,C))]).
