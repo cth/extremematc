@@ -122,7 +122,9 @@ match_pairs_rec(N,[(P1,P2,C)|Pairs],Used,G1, G2,Total), intersection(sort([P1,P2
 	Total #= TotalRest + C,
 	match_pairs_rec(N-1,Pairs,union(sort([P1,P2]),Used),P1s,P2s,TotalRest).
 
-match_pairs_rec(N,[(P1,P2,C)|Pairs],Used,P1s,P2s,Total), intersection(sort([P1,P2]),Used) != [] ?=>
+%match_pairs_rec(N,[(P1,P2,C)|Pairs],Used,P1s,P2s,Total), intersection(sort([P1,P2]),Used) != [] ?=>
+
+match_pairs_rec(N,[(P1,P2,C)|Pairs],Used,P1s,P2s,Total) ?=>
 	match_pairs_rec(N,Pairs,Used,P1s,P2s,Total).
 
 match_pairs_old(N,Pairs, G1, G2, Total) =>

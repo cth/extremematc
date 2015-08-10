@@ -21,12 +21,14 @@ shinyUI(fluidPage(
                   min = 1,
                   max = 20,
                   value = 5)
-
     ),
 
     # Show a plot of the generated distribution
     mainPanel(
-      plotOutput("distPlot")
-    )
+	  fluidRow(
+
+      plotOutput("distPlot"),
+	  dataTableOutput(outputId="matched")
+    ))
   )
 ))
